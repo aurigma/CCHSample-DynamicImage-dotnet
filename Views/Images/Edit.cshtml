@@ -1,0 +1,123 @@
+﻿@model ItemModel
+
+@section Styles {
+    <link href="@Url.Content("~/css/editor-page.css")" rel="stylesheet" type="text/css" />
+    <link href="@Url.Content("~/lib/lightbox/css/lightbox.min.css")" rel="stylesheet" type="text/css" />
+}
+
+<script type="module" src="@Url.Content("~/lib/au-di-form/au-di-form.esm.js")"></script>
+<script src="@Url.Content("~/lib/lightbox/js/lightbox-plus-jquery.min.js") "></script>
+
+@{
+    ViewData["Title"] = "Edit " + Model.Name;
+    var dynamicImageUrl = "https://cc-apps.aurigma.net/" + ViewBag.TenantId + "/dynamic-image/" + ViewBag.DynamicImageVersion;
+}
+<div class="container">
+    <div class="row">
+        <div class="col">
+            <div class="main">
+                <div class="main__preview">
+                    <a id="preview_lightbox" data-lightbox="preview-1" data-title="Preview">
+                        <img id="preview" />
+                    </a>
+                </div>
+                <div class="main__form">
+                    <di-form></di-form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        // get information about psd file - size (width and height) and list of layers with data.
+        const getTemplateInformation = async () => {
+
+            const requestOptions = {
+                method: 'POST',
+                headers: new Headers({ "Content-Type": "application/json"}),
+                body: JSON.stringify({ "template": "@Model.Id", "fullInfo": true })
+            };
+
+            const response = await fetch("@dynamicImageUrl/api/information/template", requestOptions)
+            const result = await response.json();
+            return result;
+        };
+
+        // get preview image url with filled formData
+        const getPreviewUrl = async (formData) => {
+
+            const requestData = {
+                "template": "@Model.Id",
+                "size": {
+                    "height": 1200,
+                    "width": 1200
+                },
+                "format": "jpg"
+            };
+
+            if (formData) {
+                requestData.data = formData;
+            }
+
+            const requestOptions = {
+                method: 'POST',
+                headers: new Headers({ "Content-Type": "application/json"}),
+                body: JSON.stringify(requestData )
+            };
+
+            const response = await fetch("@dynamicImageUrl/api/rendering/preview", requestOptions);
+            const result = await response.json();
+            return result;
+        };
+
+        const updatePreview = (url) => {
+            document.querySelector("img#preview").src = url;
+            document.querySelector("a#preview_lightbox").href = url;
+        }
+
+        // pass template information to a special component, which trigger `requestDataChanged` event, when data in form changed
+        const initForm = (info) => {
+            const diForm = document.querySelector("di-form");
+            diForm.layers = info.layers;
+            diForm.addEventListener("requestDataChanged", async (event) => {
+                const previewDiv = document.querySelector("div.main__preview");
+                togglePreloader(true, previewDiv, "Preparing preview...");
+                const url = await getPreviewUrl(event.detail);
+                updatePreview(url);
+                togglePreloader(false, previewDiv);
+            });
+        };
+
+        // show or hide preloader with `text` on `item`
+        const togglePreloader = (isShow, item, text) => {
+            text = text || "";
+            if (isShow) {
+                const preloader = '<div id="preloader"><div class="loader-wrapper"><div class="loader"></div><img class="icon-cc-logo" src="//cdnjs.cloudflare.com/ajax/libs/file-uploader/3.7.0/processing.gif"></div><div class="loader__message">MSG</div></div>'.replace("MSG", text);
+                item.innerHTML += preloader;
+            } else {
+                const preloaderDiv = item.querySelector("div#preloader");
+                if (preloaderDiv) {
+                    preloaderDiv.remove();
+                }
+            }
+        };
+
+        getPreviewUrl().then(url => updatePreview(url));
+
+        // get info and init form
+        togglePreloader(true, document.querySelector("div.main"), "Getting information about template");
+        getTemplateInformation().then(info => {
+            initForm(info);
+            togglePreloader(false, document.querySelector("div.main"));
+        });
+
+        lightbox.option({
+            'resizeDuration': 200,
+            'wrapAround': true,
+            'maxWidth': 4000,
+            'maxHeight': 4000,
+        });
+
+    });
+</script>
